@@ -1,0 +1,16 @@
+[sync]
+; Абсолютный путь к синхронизируемой локальной папке
+local_path = /Users/example/SyncFolder
+
+; Имя папки в Яндекс.Диске для бэкапа (создастся автоматически, если её нет)
+remote_name = backup
+
+; OAuth-токен Яндекс.Диска. Как получить — см. README.md
+; ВАЖНО: реальный токен НЕ коммитить, файл config.ini находится в .gitignore
+token = PASTE_YOUR_OAUTH_TOKEN_HERE
+
+; Период синхронизации в секундах
+period = 30
+
+; Путь к файлу лога
+log_path = sync.log
