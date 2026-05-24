@@ -1,37 +1,31 @@
-"""Базовый интерфейс облачного хранилища.
-
-Любая новая реализация (Google Drive, Dropbox и т. д.) должна наследовать
-``CloudStorage`` и предоставлять четыре публичных метода: ``load``,
-``reload``, ``delete``, ``get_info``.
-"""
-
 from abc import ABC, abstractmethod
-from typing import Dict
 
 
 class CloudStorageError(Exception):
-    """Базовый класс ошибок при работе с облачным хранилищем."""
+    """Класс для идентификации ошибок, связанных с работой хранилища"""
+    pass
 
 
 class CloudAuthError(CloudStorageError):
-    """Невалидный токен или нет доступа к удалённой папке."""
+    """Класс для идентификации ошибок, связанных с авторизацией хранилища"""
+    pass
 
 
 class CloudStorage(ABC):
-    """Абстрактный интерфейс облачного хранилища."""
+    """Абстрактный интерфейс для облачного хранилища"""
 
     @abstractmethod
     def load(self, path: str) -> None:
-        """Загрузить новый файл по локальному пути ``path`` в хранилище."""
+        """Загрузить новый файл в хранилище"""
 
     @abstractmethod
     def reload(self, path: str) -> None:
-        """Перезаписать файл по локальному пути ``path`` в хранилище."""
+        """Перезаписать файл в хранилище"""
 
     @abstractmethod
-    def delete(self, filename: str) -> None:
-        """Удалить файл с именем ``filename`` из удалённой папки."""
+    def delete(self, path: str) -> None:
+        """Удалить файл из хранилища"""
 
     @abstractmethod
-    def get_info(self) -> Dict[str, str]:
-        """Вернуть словарь ``{имя_файла: время_изменения_iso}``."""
+    def get_info(self) -> dict[str, str]:
+        """Вернуть словарь {имя_файла: время_изменения} из хранилища."""

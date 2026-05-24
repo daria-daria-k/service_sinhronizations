@@ -1,26 +1,17 @@
-"""Сканер локальной папки.
-
-Согласно ТЗ в синхронизируемой папке появляются только файлы,
-вложенные папки не учитываются.
-"""
-
 import os
-from typing import Dict
 
 
-def collect_local_files(local_path: str) -> Dict[str, float]:
-    """Вернуть словарь ``{имя_файла: mtime}`` для файлов в ``local_path``.
-
-    :param local_path: путь к синхронизируемой папке.
-    :return: словарь имён файлов и времени их последнего изменения.
+def collect_local_files(local_path: str) -> dict[str, str]:
     """
-    entries = os.listdir(local_path)
-    return dict(_iter_file_entries(local_path, entries))
+    Функция для сбора данных о файлах в директории (имя: дата последнего изменения)
+    :param local_path:
+    :return:
+    """
+    local_files = os.listdir(local_path)
+    files_info = {}
+    for file in local_files:
+        file_path = os.path.join(local_path, file)
+        if os.path.isfile(file_path):
+            files_info[file] = os.path.getmtime(file_path)
 
-
-def _iter_file_entries(local_path: str, entries):
-    """Вернуть пары ``(имя_файла, mtime)`` только для обычных файлов."""
-    for name in entries:
-        full = os.path.join(local_path, name)
-        if os.path.isfile(full):
-            yield name, os.path.getmtime(full)
+    return files_info

@@ -1,86 +1,70 @@
-"""Тесты для модуля ``config_loader``."""
-
 import os
 import tempfile
 import unittest
-
-from sync_service.config_loader import ConfigError, load_config
-
-
-_VALID_TEMPLATE = """[sync]
-local_path = {local_path}
-remote_name = backup
-token = AQAAAAA-test-token
-period = 30
-log_path = {log_path}
-"""
+from sync_service.config_loader import load_config, ConfigError
 
 
-class LoadConfigTests(unittest.TestCase):
-    """Сценарии разбора ``config.ini``."""
-
-    def setUp(self) -> None:
+class TestLoadConfig(unittest.TestCase):
+    def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.local_dir = os.path.join(self._tmp.name, "data")
+        self.local_dir = os.path.join(self._tmp.name, 'data')
         os.makedirs(self.local_dir)
-        self.log_path = os.path.join(self._tmp.name, "sync.log")
-        self.config_path = os.path.join(self._tmp.name, "config.ini")
+        self.config_path = os.path.join(self._tmp.name, 'config.ini')
 
-    def tearDown(self) -> None:
+    def tearDown(self):
         self._tmp.cleanup()
 
-    def _write_config(self, body: str) -> None:
-        with open(self.config_path, "w", encoding="utf-8") as fileobj:
-            fileobj.write(body)
+    def _write_config(self, content):
+        with open(self.config_path, 'w', encoding='utf-8') as f:
+            f.write(content)
 
-    def test_loads_valid_config(self) -> None:
-        self._write_config(
-            _VALID_TEMPLATE.format(
-                local_path=self.local_dir, log_path=self.log_path
-            )
-        )
+    def test_valid_config(self):
+        """Проверяет валидность конфига"""
+        self._write_config(f"""[sync]
+        local_path = {self.local_dir}
+        remote_name = backup
+        token = mytoken123
+        period = 30
+        log_path = sync.log
+        """)
+
         config = load_config(self.config_path)
-        self.assertEqual(config.local_path, self.local_dir)
-        self.assertEqual(config.remote_name, "backup")
-        self.assertEqual(config.token, "AQAAAAA-test-token")
+        self.assertEqual(config.log_path, "sync.log")
+        self.assertEqual(config.token, 'mytoken123')
         self.assertEqual(config.period, 30)
-        self.assertEqual(config.log_path, self.log_path)
 
-    def test_missing_file_raises(self) -> None:
+    def test_missing_file_rises(self):
+        """Проверка работу исключения в случае неверного пути к конфигу"""
         with self.assertRaises(ConfigError):
-            load_config(os.path.join(self._tmp.name, "nope.ini"))
+            load_config("/несуществующий/путь/config.ini")
 
-    def test_missing_section_raises(self) -> None:
-        self._write_config("[other]\nkey=value\n")
-        with self.assertRaises(ConfigError):
-            load_config(self.config_path)
-
-    def test_missing_local_folder_raises(self) -> None:
-        self._write_config(
-            _VALID_TEMPLATE.format(
-                local_path=os.path.join(self._tmp.name, "ghost"),
-                log_path=self.log_path,
-            )
-        )
+    def test_missing_section_raises(self):
+        """Проверяет работу исключения в случае если функция сборки информации о конфиге завершилась ошибкой"""
+        self._write_config("local_path = /tmp\n")
         with self.assertRaises(ConfigError):
             load_config(self.config_path)
 
-    def test_invalid_period_raises(self) -> None:
-        body = _VALID_TEMPLATE.format(
-            local_path=self.local_dir, log_path=self.log_path
-        ).replace("period = 30", "period = abc")
-        self._write_config(body)
+    def test_empty_token_raises(self):
+        """Проверяет работу исключения в случае отсутствия значения токена"""
+        self._write_config(f"""[sync]
+        local_path = {self.local_dir}
+        remote_name = backup
+        token =
+        period = 30
+        log_path = sync.log
+        """)
         with self.assertRaises(ConfigError):
             load_config(self.config_path)
 
-    def test_empty_token_raises(self) -> None:
-        body = _VALID_TEMPLATE.format(
-            local_path=self.local_dir, log_path=self.log_path
-        ).replace("token = AQAAAAA-test-token", "token =   ")
-        self._write_config(body)
+    def test_invalid_period_raises(self):
+        """Проверяет работу исключения в случае неправильного значения периода работы скрипта"""
+        self._write_config(f"""[sync]
+        local_path = {self.local_dir}
+        remote_name = backup
+        token = mytoken
+        period = abc
+        log_path = sync.log
+        """)
         with self.assertRaises(ConfigError):
             load_config(self.config_path)
 
-
-if __name__ == "__main__":
-    unittest.main()

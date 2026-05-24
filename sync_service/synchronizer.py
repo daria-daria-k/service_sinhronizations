@@ -1,137 +1,70 @@
-"""Логика синхронизации локальной папки с облачным хранилищем."""
-
 import logging
 import os
 import time
-from typing import Dict, Set, Tuple
-
 from sync_service.cloud.base import CloudStorage, CloudStorageError
 from sync_service.local_scanner import collect_local_files
 
 
-DiffResult = Tuple[Set[str], Set[str], Set[str]]
+def diff(current_local: dict, previous_local: dict, remote_files: dict) -> tuple[set, set, set]:
+    """Функция для определения действия с файлами (добавить, обновить, удалить)"""
+    to_upload = set(current_local) - set(remote_files)
+    to_delete = set(remote_files) - set(current_local)
+    to_reload = set()
+
+    for filename in set(current_local) & set(remote_files):
+        if filename in previous_local and current_local[filename] != previous_local[filename]:
+            to_reload.add(filename)
+
+    return to_upload, to_delete, to_reload
 
 
-def diff(
-    current_local: Dict[str, float],
-    previous_local: Dict[str, float],
-    remote_names: Set[str],
-) -> DiffResult:
-    """Вернуть три набора имён: ``to_upload``, ``to_reload``, ``to_delete``.
+def apply_changes(storage: CloudStorage,
+                  local_path: str,
+                  to_upload: set,
+                  to_reload: set,
+                  to_delete: set,
+                  logger: logging.Logger) -> None:
+    """Функция для применения изменений в облачном хранилище"""
 
-    :param current_local: текущая локальная карта ``{имя: mtime}``.
-    :param previous_local: предыдущая локальная карта (пустая на первом запуске).
-    :param remote_names: множество имён файлов, уже лежащих в облаке.
-    """
-    local_names = set(current_local)
-    to_upload = local_names - remote_names
-    to_delete = remote_names - local_names
-    to_reload = _changed_files(current_local, previous_local, local_names & remote_names)
-    return to_upload, to_reload, to_delete
+    for filename in to_upload:
+        try:
+            storage.load(os.path.join(local_path, filename))
+            logger.info(f"Загружен новый файл: {filename}")
+        except (CloudStorageError, OSError) as e:
+            logger.error(f"Не удалось загрузить файл {filename}: {e}")
 
+    for filename in to_reload:
+        try:
+            storage.reload(os.path.join(local_path, filename))
+            logger.info(f"Файл обновлен: {filename}")
+        except (CloudStorageError, OSError) as e:
+            logger.error(f"Не удалось обновить файл {filename}: {e}")
 
-def _changed_files(
-    current: Dict[str, float],
-    previous: Dict[str, float],
-    common: Set[str],
-) -> Set[str]:
-    """Вернуть имена общих файлов, у которых изменилось ``mtime``."""
-    return {name for name in common if _mtime_changed(name, current, previous)}
-
-
-def _mtime_changed(
-    name: str, current: Dict[str, float], previous: Dict[str, float]
-) -> bool:
-    """Проверить, видели ли мы файл раньше с другим временем изменения."""
-    return name in previous and previous[name] != current[name]
+    for filename in to_delete:
+        try:
+            storage.delete(filename)
+            logger.info(f"Файл удален: {filename}")
+        except (CloudStorageError, OSError) as e:
+            logger.error(f"Файл не удалось удалить {filename}: {e}")
 
 
-def apply_changes(
-    storage: CloudStorage,
-    local_path: str,
-    to_upload: Set[str],
-    to_reload: Set[str],
-    to_delete: Set[str],
-    logger: logging.Logger,
-) -> None:
-    """Применить изменения в облаке. Ошибки по конкретному файлу логируются."""
-    _apply_uploads(storage, local_path, to_upload, logger)
-    _apply_reloads(storage, local_path, to_reload, logger)
-    _apply_deletes(storage, to_delete, logger)
-
-
-def _apply_uploads(storage, local_path, names, logger):
-    """Загрузить новые файлы."""
-    for name in names:
-        _safe_call(
-            lambda: storage.load(os.path.join(local_path, name)),
-            success=f"Загружен новый файл: {name}",
-            failure=f"Не удалось загрузить файл {name}",
-            logger=logger,
-        )
-
-
-def _apply_reloads(storage, local_path, names, logger):
-    """Перезаписать изменённые файлы."""
-    for name in names:
-        _safe_call(
-            lambda: storage.reload(os.path.join(local_path, name)),
-            success=f"Обновлён файл: {name}",
-            failure=f"Не удалось обновить файл {name}",
-            logger=logger,
-        )
-
-
-def _apply_deletes(storage, names, logger):
-    """Удалить файлы, которых больше нет локально."""
-    for name in names:
-        _safe_call(
-            lambda: storage.delete(name),
-            success=f"Удалён файл: {name}",
-            failure=f"Не удалось удалить файл {name}",
-            logger=logger,
-        )
-
-
-def _safe_call(action, success, failure, logger):
-    """Выполнить действие, перехватывая ошибки и записывая результат в лог."""
-    try:
-        action()
-    except (CloudStorageError, OSError) as exc:
-        logger.error("%s: %s", failure, exc)
-        return
-    logger.info(success)
-
-
-def run_once(
-    storage: CloudStorage,
-    local_path: str,
-    previous_local: Dict[str, float],
-    logger: logging.Logger,
-) -> Dict[str, float]:
-    """Выполнить один цикл синхронизации и вернуть актуальную карту локальных файлов."""
+def run_once(storage: CloudStorage, local_path: str, previous_local: dict, logger: logging.Logger) -> dict:
+    """Функция выполняет один цикл синхронизации с облаком"""
     try:
         current_local = collect_local_files(local_path)
-        remote = set(storage.get_info())
-    except (CloudStorageError, OSError) as exc:
-        logger.error("Цикл синхронизации пропущен: %s", exc)
+        remote_files = set(storage.get_info())
+    except (CloudStorageError, OSError) as e:
+        logger.error(f"Цикл синхронизации пропущен: {e}")
         return previous_local
-    to_upload, to_reload, to_delete = diff(current_local, previous_local, remote)
-    apply_changes(
-        storage, local_path, to_upload, to_reload, to_delete, logger
-    )
+
+    to_upload, to_delete, to_reload = diff(current_local, previous_local, remote_files)
+    apply_changes(storage, local_path, to_upload, to_reload, to_delete, logger)
     return current_local
 
 
-def run_forever(
-    storage: CloudStorage,
-    local_path: str,
-    period: int,
-    logger: logging.Logger,
-    sleep=time.sleep,
-) -> None:
-    """Запустить бесконечный цикл синхронизации с шагом ``period`` секунд."""
-    state: Dict[str, float] = {}
+def run_forever(storage: CloudStorage, local_path: str, period: int, logger: logging.Logger) -> None:
+    """Функция выполняет бесконечный цикл"""
+    previous_local = {}
     while True:
-        state = run_once(storage, local_path, state, logger)
-        sleep(period)
+        previous_local = run_once(storage, local_path, previous_local, logger)
+        time.sleep(period)
