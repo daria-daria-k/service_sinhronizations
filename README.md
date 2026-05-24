@@ -23,7 +23,7 @@
 
 ```bash
 git clone https://github.com/daria-daria-k/service_sinhronizations.git
-cd <repo-name>
+cd service_sinhronizations
 python3 -m venv venv
 source venv/bin/activate          # для Windows: venv\Scripts\activate
 pip install -r requirements.txt
@@ -109,6 +109,17 @@ python -m unittest discover -s tests
 │       ├── base.py               # абстрактный CloudStorage
 │       └── yandex_disk.py        # реализация для Яндекс.Диска
 └── tests/                        # unittest
+```
+
+## Docker
+
+Собрать образ:
+```bash
+docker build -t sync-service .
+```
+Запустить контейнер
+```bash
+docker run -v /путь/к/локальной/папке:/data sync-service
 ```
 
 ## Лицензия
