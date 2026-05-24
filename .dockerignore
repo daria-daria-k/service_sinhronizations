@@ -1,0 +1,5 @@
+config.ini
+sync.log
+__pycache__
+.git
+*.pyc
